@@ -50,8 +50,6 @@ def homography_apply(H, x1, y1):
     return x2, y2
 
 
-
-
 def homography_extraction(I1, x, y, w, h):
     
     # ici je défini les coordonées des point d'ancrage de la future image (ordre : haut gauche, haut droit, bas droit, bas gauche)
@@ -86,6 +84,42 @@ def homography_extraction(I1, x, y, w, h):
             I2[:,:,channel] = pixel_values.reshape((h, w))
             
     return I2
+
+def homography_projection(I1, I2, x, y):
+  
+    I2_result = I2.copy()
+    
+    h_src, w_src = I1.shape[:2]
+    h_dst, w_dst = I2.shape[:2]
+    
+    # coins : (0,0); (w,0); (w,h); (0,h)
+    x_src = [0, w_src - 1, w_src - 1, 0]
+    y_src = [0, 0, h_src - 1, h_src - 1]
+
+    H = homography_estimate(x_src, y_src, x, y)
+
+    H_inv = np.linalg.inv(H)
+    
+    min_x = max(0, int(min(x)))
+    max_x = min(w_dst, int(max(x)) + 1)
+    min_y = max(0, int(min(y)))
+    max_y = min(h_dst, int(max(y)) + 1)
+
+    for v_dst in range(min_y, max_y):
+        for u_dst in range(min_x, max_x):
+            
+            denominator = H_inv[2, 0] * u_dst + H_inv[2, 1] * v_dst + H_inv[2, 2]
+            
+            src_x = (H_inv[0, 0] * u_dst + H_inv[0, 1] * v_dst + H_inv[0, 2]) / denominator
+            src_y = (H_inv[1, 0] * u_dst + H_inv[1, 1] * v_dst + H_inv[1, 2]) / denominator
+            
+            u_src = int(round(src_x))
+            v_src = int(round(src_y))
+
+            if 0 <= u_src < w_src and 0 <= v_src < h_src:
+                I2_result[v_dst, u_dst] = I1[v_src, u_src]
+
+    return I2_result
 
  
 
