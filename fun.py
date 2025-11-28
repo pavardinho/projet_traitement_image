@@ -85,6 +85,7 @@ def homography_extraction(I1, x, y, w, h):
             
     return I2
 
+
 def homography_projection(I1, I2, x, y):
   
     I2_result = I2.copy()
@@ -121,6 +122,21 @@ def homography_projection(I1, I2, x, y):
 
     return I2_result
 
- 
+def homography_cross_projection(I, x1, y1, x2, y2):
+
+    # On définit une taille arbitraire pour la qualité de l'échange
+    w_temp, h_temp = 400, 400
+    
+    # On extrait la zone 1 vers une image temporaire
+    patch1 = homography_extraction(I, x1, y1, w_temp, h_temp)
+    
+    # On extrait la zone 2 vers une image temporaire
+    patch2 = homography_extraction(I, x2, y2, w_temp, h_temp)
+    
+    I_step1 = homography_projection(patch2, I, x1, y1)
+    
+    I_final = homography_projection(patch1, I_step1, x2, y2)
+    
+    return I_final
 
 
