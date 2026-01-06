@@ -123,20 +123,75 @@ def homography_projection(I1, I2, x, y):
     return I2_result
 
 def homography_cross_projection(I, x1, y1, x2, y2):
+    # On travaille sur une copie pour ne pas écraser les pixels dont on a besoin
+    I_result = I.copy()
 
-    # On définit une taille arbitraire pour la qualité de l'échange
-    w_temp, h_temp = 400, 400
+    I_source_3d = np.atleast_3d(I)
     
-    # On extrait la zone 1 vers une image temporaire
-    patch1 = homography_extraction(I, x1, y1, w_temp, h_temp)
+    h_img, w_img = I.shape[:2]
     
-    # On extrait la zone 2 vers une image temporaire
-    patch2 = homography_extraction(I, x2, y2, w_temp, h_temp)
+    # définition du "carré virtuel"
+    size_temp = 400
+    x_s = np.array([0, size_temp, size_temp, 0])
+    y_s = np.array([0, 0, size_temp, size_temp])
     
-    I_step1 = homography_projection(patch2, I, x1, y1)
+    # calcul homographies de base avec le carre virtuel come destination
+    H_as = homography_estimate(x1, y1, x_s, y_s)
+    H_bs = homography_estimate(x2, y2, x_s, y_s)
     
-    I_final = homography_projection(patch1, I_step1, x2, y2)
+    # Pour remplir A, on doit savoir où chercher dans B.
+    # Chemin : Pixel dans A -> (H_as) -> Carré S -> (inv H_bs) -> Pixel dans B
+    H_sb = np.linalg.inv(H_bs)
+    H_fill_A = np.matmul(H_sb, H_as)
     
-    return I_final
+    # Pour remplir B, on doit savoir où chercher dans A.
+    # Chemin : Pixel dans B -> (H_bs) -> Carré S -> (inv H_as) -> Pixel dans A
+    H_sa = np.linalg.inv(H_as)
+    H_fill_B = np.matmul(H_sa, H_bs)
+    
+    # fonction pour remplir une zone
+    def fill_zone(x_corners, y_corners, H_transform, H_check_inside):
+
+        x_min, x_max = int(np.min(x_corners)), int(np.max(x_corners))
+        y_min, y_max = int(np.min(y_corners)), int(np.max(y_corners))
+        
+
+        x_min, x_max = max(0, x_min), min(w_img, x_max + 1)
+        y_min, y_max = max(0, y_min), min(h_img, y_max + 1)
+        
+        # grille de pixels de la zone destination
+        xv, yv = np.meshgrid(np.arange(x_min, x_max), np.arange(y_min, y_max))
+        xf = xv.flatten()
+        yf = yv.flatten()
+        
+        # Astuce du prof : On projette le pixel dans le Carré Virtuel.
+        # S'il tombe entre [0, size_temp], c'est qu'il est dans le quad
+        xt, yt = homography_apply(H_check_inside, xf, yf)
+        mask = (xt >= 0) & (xt <= size_temp) & (yt >= 0) & (yt <= size_temp)
+        
+        if not np.any(mask): return # sinon zone vide
+        
+        # On garde que les pixels valides
+        xf_valid = xf[mask]
+        yf_valid = yf[mask]
+        
+        # On applique la matrice combinée
+        x_src, y_src = homography_apply(H_transform, xf_valid, yf_valid)
+        
+        # interpolation depuis l'image originale
+        coords = np.vstack((y_src, x_src))
+        
+        I_res_3d = np.atleast_3d(I_result)
+        for i in range(I_res_3d.shape[2]):
+            vals = map_coordinates(I_source_3d[:,:,i], coords, order=1, mode='nearest')
+            I_res_3d[yf_valid, xf_valid, i] = vals
+    
+    # Remplir la zone 1 avec le contenu de la zone 2
+    fill_zone(x1, y1, H_fill_A, H_as)
+    
+    # Remplir la zone 2 avec le contenu de la zone 1
+    fill_zone(x2, y2, H_fill_B, H_bs)
+    
+    return I_result
 
 
